@@ -1,5 +1,5 @@
-import { GeneratedQuestion, QuestionDifficulty, QuestionType } from "@/types/question";
-import { ALL_CHAPTERS, findTopicByChapter } from "@/data/chapters/edexcel-chapters";
+import { GeneratedQuestion, Level, QuestionDifficulty, QuestionType } from "@/types/question";
+import { ALL_CHAPTERS, findTopicByChapter, topicLevelForChapter } from "@/data/chapters/edexcel-chapters";
 import { specForChapter, defaultSpecPoint } from "@/data/chapters/spec-map";
 import { extractCommandWords, extractPrecision } from "@/lib/exam/command-words";
 import { markSchemeFor } from "@/lib/exam/mark-scheme";
@@ -9,6 +9,7 @@ export interface GenerationParams {
   difficulty: QuestionDifficulty;
   questionType?: QuestionType;
   chapter?: string;
+  level?: Level;
   marks?: number;
   count?: number;
 }
@@ -650,6 +651,13 @@ export class QuestionGenerator {
       const narrowed = pool.filter(
         (t) =>
           t.chapter.toLowerCase().includes(ch) || ch.includes(t.chapter.toLowerCase())
+      );
+      if (narrowed.length > 0) pool = narrowed;
+    }
+
+    if (params.level) {
+      const narrowed = pool.filter(
+        (t) => topicLevelForChapter(t.chapter) === params.level
       );
       if (narrowed.length > 0) pool = narrowed;
     }

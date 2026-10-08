@@ -30,6 +30,7 @@ import { SessionRecord, saveSessionRecord } from "@/lib/db/session-db";
 import { badgeCommandWords, precisionFlags } from "@/lib/exam/command-words";
 import { MarkAward, StepVerdict, awardMarks } from "@/lib/exam/mark-scheme";
 import { specForChapter } from "@/data/chapters/spec-map";
+import { skillById, Skill } from "@/data/skills";
 import {
   AttemptGate,
   ConfidencePicker,
@@ -189,12 +190,14 @@ async function fetchQuestions(params: {
   difficulty?: string;
   questionType?: string;
   chapter?: string;
+  level?: YearChoice;
   count: number;
 }): Promise<GeneratedQuestion[]> {
   const sp = new URLSearchParams();
   if (params.difficulty) sp.set("difficulty", params.difficulty);
   if (params.questionType) sp.set("questionType", params.questionType);
   if (params.chapter) sp.set("chapter", params.chapter);
+  if (params.level && params.level !== "all") sp.set("level", params.level);
   sp.set("count", String(params.count));
   const res = await fetch(`/api/questions?${sp.toString()}`);
   const data = await res.json();
@@ -261,16 +264,30 @@ function buildSessionRecord(session: SessionState, abandoned: boolean): SessionR
   };
 }
 
+type YearChoice = "all" | "year1" | "year2";
+
+const YEAR_CHOICES: { value: YearChoice; label: string }[] = [
+  { value: "all", label: "All years" },
+  { value: "year1", label: "Year 1 / AS" },
+  { value: "year2", label: "Year 2" },
+];
+
 function PracticeInner() {
   const searchParams = useSearchParams();
   const chapterFilter = searchParams.get("chapter");
   const urlMode = normaliseMode(searchParams.get("mode"));
+  const skillParam = searchParams.get("skill");
+  const skill = useMemo<Skill | undefined>(
+    () => (skillParam ? skillById(decodeURIComponent(skillParam)) : undefined),
+    [skillParam]
+  );
 
   const [phase, setPhase] = useState<Phase>("setup");
   const [mode, setMode] = useState<SessionMode>(urlMode ?? "practice");
   const [conditions, setConditions] = useState<Conditions>("gentle");
   const [difficulty, setDifficulty] = useState("medium");
   const [module, setModule] = useState("pure");
+  const [level, setLevel] = useState<YearChoice>("all");
   const [count, setCount] = useState(6);
   const [loading, setLoading] = useState(false);
 
@@ -337,7 +354,15 @@ function PracticeInner() {
         const conds = opts?.conditions ?? conditions;
         let questions: GeneratedQuestion[] = [];
 
-        if (m === "tmua") {
+        if (skill && !chapterFilter && m !== "tmua") {
+          const per = Math.max(1, Math.ceil(c / skill.chapters.length));
+          const batches = await Promise.all(
+            skill.chapters.map((ch) =>
+              fetchQuestions({ difficulty, chapter: ch, count: per })
+            )
+          );
+          questions = shuffle(batches.flat()).slice(0, c);
+        } else if (m === "tmua") {
           questions = shuffle(TMUA_QUESTIONS).slice(0, c);
         } else if (m === "mistakes") {
           const p = getProfile();
@@ -382,6 +407,7 @@ function PracticeInner() {
             difficulty: m === "mixed" ? "any" : difficulty,
             questionType: module !== "any" ? module : undefined,
             chapter: chapterFilter || undefined,
+            level,
             count: c,
           });
         }
@@ -419,7 +445,7 @@ function PracticeInner() {
         setLoading(false);
       }
     },
-    [mode, conditions, difficulty, module, count, chapterFilter, saveSession]
+    [mode, conditions, difficulty, module, count, chapterFilter, level, skill, saveSession]
   );
 
   const resumeSession = useCallback(() => {
@@ -666,6 +692,24 @@ function PracticeInner() {
             : "Past-paper style questions with examiner marking, instant feedback and spaced re-testing of what you get wrong."}
         </p>
 
+        {skill && !chapterFilter && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm dark:border-violet-800 dark:bg-violet-950/40">
+            <span>
+              Skill drill:{" "}
+              <strong>
+                {skill.name}
+              </strong>{" "}
+              <span className="text-zinc-500">— {skill.blurb}</span>
+            </span>
+            <Link
+              href="/practice"
+              className="font-medium text-violet-700 underline underline-offset-2 dark:text-violet-300"
+            >
+              Clear
+            </Link>
+          </div>
+        )}
+
         {chapterFilter && mode !== "foundation" && mode !== "mistakes" && (
           <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm dark:border-blue-800 dark:bg-blue-950/40">
             <span>
@@ -859,6 +903,38 @@ function PracticeInner() {
                   </button>
                 ))}
               </div>
+            </fieldset>
+          )}
+
+          {mode !== "mistakes" && mode !== "foundation" && mode !== "tmua" && (
+            <fieldset>
+              <legend className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                Course year
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {YEAR_CHOICES.map((y) => (
+                  <button
+                    key={y.value}
+                    onClick={() => setLevel(y.value)}
+                    className={`h-11 min-w-24 rounded-md border px-4 text-sm font-medium transition-colors ${
+                      level === y.value
+                        ? y.value === "year1"
+                          ? "border-sky-600 bg-sky-600 text-white"
+                          : y.value === "year2"
+                            ? "border-violet-600 bg-violet-600 text-white"
+                            : "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                        : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    }`}
+                    aria-pressed={level === y.value}
+                  >
+                    {y.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                As split by the Pearson revision books: Year 1 covers the
+                AS content, Year 2 the full A-level.
+              </p>
             </fieldset>
           )}
 

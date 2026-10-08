@@ -10,6 +10,8 @@ export type QuestionType =
   | 'pure'
   | 'applied';
 
+export type Level = 'year1' | 'year2';
+
 export type EdexcelTopic = {
   id: string;
   name: string;
@@ -18,6 +20,8 @@ export type EdexcelTopic = {
   module: 'pure' | 'stats' | 'mechanics';
   year: number;
   specCode: string;
+  /** Course year the chapter is taught in, matching the Pearson revision books. */
+  level: Level;
 };
 
 export interface QuestionOption {

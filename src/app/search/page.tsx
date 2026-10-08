@@ -5,10 +5,16 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Search } from "lucide-react";
-import { EDEXCEL_ALEVEL_CHAPTERS } from "@/data/chapters/edexcel-chapters";
-import { EdexcelTopic } from "@/types/question";
+import { BOOK_CHAPTERS, CHAPTER_BOOKS, findTopicByChapter } from "@/data/chapters/edexcel-chapters";
+import { EdexcelTopic, Level } from "@/types/question";
 
-type ModuleKey = "all" | "Pure Mathematics" | "Statistics" | "Mechanics";
+type YearKey = "all" | Level;
+
+const MODULE_NAME: Record<string, string> = {
+  pure: "Pure Mathematics",
+  stats: "Statistics",
+  mechanics: "Mechanics",
+};
 
 const MODULE_STYLES: Record<string, string> = {
   "Pure Mathematics": "border-blue-300 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/30",
@@ -20,6 +26,13 @@ const MODULE_ACCENT: Record<string, string> = {
   "Pure Mathematics": "text-blue-700 dark:text-blue-300",
   Statistics: "text-emerald-700 dark:text-emerald-300",
   Mechanics: "text-amber-700 dark:text-amber-300",
+};
+
+const BOOK_MODULE: Record<string, string> = {
+  pure1: "Pure Mathematics",
+  pure2: "Pure Mathematics",
+  sm1: "Statistics",
+  sm2: "Statistics",
 };
 
 const HIGH_YIELD = [
@@ -43,7 +56,7 @@ export default function SearchPage() {
     q: string;
     results: SearchApiResult[];
   } | null>(null);
-  const [activeModule, setActiveModule] = useState<ModuleKey>("all");
+  const [activeYear, setActiveYear] = useState<YearKey>("all");
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 200);
@@ -76,16 +89,18 @@ export default function SearchPage() {
       : []
     : null;
 
-  const grouped = useMemo(() => {
-    const entries = Object.entries(EDEXCEL_ALEVEL_CHAPTERS);
-    if (activeModule === "all") return entries;
-    return entries.filter(([name]) => name === activeModule);
-  }, [activeModule]);
-
-  const totalTopics = useMemo(
-    () => Object.values(EDEXCEL_ALEVEL_CHAPTERS).flat().length,
-    []
+  const bookSections = useMemo(
+    () =>
+      CHAPTER_BOOKS.filter((b) => activeYear === "all" || b.level === activeYear)
+        .map((book) => ({
+          book,
+          chapters: BOOK_CHAPTERS.filter((c) => c.book === book.id),
+        }))
+        .filter((s) => s.chapters.length > 0),
+    [activeYear]
   );
+
+  const totalTopics = BOOK_CHAPTERS.length;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -121,7 +136,16 @@ export default function SearchPage() {
                 key={`${r.topic.id}-${i}`}
                 className={`rounded-lg border p-4 ${MODULE_STYLES[r.topic.module === "pure" ? "Pure Mathematics" : r.topic.module === "stats" ? "Statistics" : "Mechanics"]}`}
               >
-                <p className="font-semibold">{r.topic.name}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold">{r.topic.name}</p>
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    r.topic.level === "year1"
+                      ? "bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-200"
+                      : "bg-violet-100 text-violet-800 dark:bg-violet-900/60 dark:text-violet-200"
+                  }`}>
+                    Y{r.topic.level === "year1" ? "1" : "2"}
+                  </span>
+                </div>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                   {r.topic.chapter} — {r.topic.section}
                 </p>
@@ -149,62 +173,88 @@ export default function SearchPage() {
         <div className="mt-6">
           <div className="flex flex-wrap gap-2">
             {(
-              ["all", "Pure Mathematics", "Statistics", "Mechanics"] as ModuleKey[]
-            ).map((m) => (
+              [
+                { value: "all" as YearKey, label: "All years" },
+                { value: "year1" as YearKey, label: "Year 1 / AS" },
+                { value: "year2" as YearKey, label: "Year 2" },
+              ]
+            ).map((y) => (
               <button
-                key={m}
-                onClick={() => setActiveModule(m)}
+                key={y.value}
+                onClick={() => setActiveYear(y.value)}
                 className={`h-11 rounded-md border px-4 text-sm font-medium transition-colors ${
-                  activeModule === m
+                  activeYear === y.value
                     ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
                     : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
                 }`}
-                aria-pressed={activeModule === m}
+                aria-pressed={activeYear === y.value}
               >
-                {m === "all" ? "All modules" : m}
+                {y.label}
               </button>
             ))}
           </div>
 
           <div className="mt-6 space-y-8">
-            {grouped.map(([moduleName, topics]) => (
-              <section key={moduleName}>
-                <h2
-                  className={`text-lg font-bold ${MODULE_ACCENT[moduleName] ?? ""}`}
-                >
-                  {moduleName}
-                </h2>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {topics.map((t) => (
-                    <div
-                      key={t.id}
-                      className={`rounded-lg border p-4 transition-shadow hover:shadow-sm ${MODULE_STYLES[moduleName] ?? ""}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-semibold leading-snug">{t.name}</p>
-                        {HIGH_YIELD.includes(t.chapter) && (
-                          <span
-                            className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                            title="High weight on the Edexcel papers (Pareto principle)"
+            {bookSections.map(({ book, chapters }) => {
+              const accent = BOOK_MODULE[book.id];
+              return (
+                <section key={book.id}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h2 className={`text-lg font-bold ${MODULE_ACCENT[accent] ?? ""}`}>
+                      {book.title}
+                    </h2>
+                    <span className="text-xs text-zinc-500">
+                      {chapters.length} chapter{chapters.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {chapters.map((c) => {
+                      const style = MODULE_STYLES[MODULE_NAME[c.module]] ?? "";
+                      return (
+                        <div
+                          key={c.id}
+                          className={`rounded-lg border p-4 transition-shadow hover:shadow-sm ${style}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold leading-snug">
+                              <span className="mr-1.5 text-zinc-400">
+                                {c.number}.
+                              </span>
+                              {c.name}
+                            </p>
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                c.level === "year1"
+                                  ? "bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-200"
+                                  : "bg-violet-100 text-violet-800 dark:bg-violet-900/60 dark:text-violet-200"
+                              }`}
+                            >
+                              Y{c.level === "year1" ? "1" : "2"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                            {c.section} · {findTopicByChapter(c.chapter).specCode}
+                          </p>
+                          {HIGH_YIELD.includes(c.chapter) && (
+                            <p className="mt-1">
+                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                                High yield
+                              </span>
+                            </p>
+                          )}
+                          <Link
+                            href={`/practice?chapter=${encodeURIComponent(c.chapter)}`}
+                            className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                           >
-                            High yield
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                        {t.section} · {t.specCode}
-                      </p>
-                      <Link
-                        href={`/practice?chapter=${encodeURIComponent(t.chapter)}`}
-                        className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-                      >
-                        <BookOpen className="h-3.5 w-3.5" /> Practise
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
+                            <BookOpen className="h-3.5 w-3.5" /> Practise
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </div>
       )}

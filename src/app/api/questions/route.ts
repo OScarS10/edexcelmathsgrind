@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { QuestionGenerator } from "@/lib/nn/question-generator";
 import { EXAM_QUESTIONS } from "@/data/questions/exam-bank";
-import { GeneratedQuestion, QuestionDifficulty, QuestionType } from "@/types/question";
+import { topicLevelForChapter } from "@/data/chapters/edexcel-chapters";
+import { GeneratedQuestion, Level, QuestionDifficulty, QuestionType } from "@/types/question";
 
 function matchesFilters(q: GeneratedQuestion, params: {
   difficulty?: string;
   questionType?: string;
   chapter?: string;
+  level?: string;
 }): boolean {
   if (params.difficulty && params.difficulty !== "any" && q.difficulty !== params.difficulty) {
     return false;
+  }
+  if (params.level && params.level !== "all") {
+    if (topicLevelForChapter(q.chapter) !== params.level) return false;
   }
   if (params.chapter && params.chapter !== "all") {
     const ch = params.chapter.toLowerCase();
@@ -41,6 +46,7 @@ export async function GET(request: NextRequest) {
     difficulty: sp.get("difficulty") || undefined,
     questionType: sp.get("questionType") || undefined,
     chapter: sp.get("chapter") || undefined,
+    level: sp.get("level") || undefined,
   };
   const count = Math.min(parseInt(sp.get("count") || "6"), 12);
 
@@ -63,6 +69,9 @@ export async function GET(request: NextRequest) {
           ? (params.questionType as QuestionType)
           : undefined,
         chapter: params.chapter,
+        level: (params.level === "year1" || params.level === "year2"
+          ? params.level
+          : undefined) as Level | undefined,
         count: remaining,
       });
       questions = [...questions, ...generated];
