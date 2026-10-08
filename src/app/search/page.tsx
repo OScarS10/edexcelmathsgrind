@@ -57,16 +57,36 @@ export default function SearchPage() {
     results: SearchApiResult[];
   } | null>(null);
   const [activeYear, setActiveYear] = useState<YearKey>("all");
-  const [selected, setSelected] = useState<string[]>([]);
+  // Unique per card (a chapter name is shared by several Year 1/2 cards).
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const toggleChapter = (chapter: string) =>
-    setSelected((prev) =>
-      prev.includes(chapter)
-        ? prev.filter((ch) => ch !== chapter)
-        : [...prev, chapter]
+  const toggleChapter = (id: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id]
     );
 
-  const practiseSelectedHref = `/practice?${selected
+  const removeChapterName = (name: string) =>
+    setSelectedIds((prev) =>
+      prev.filter(
+        (id) => BOOK_CHAPTERS.find((c) => c.id === id)?.chapter !== name
+      )
+    );
+
+  const selectedChapters = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedIds.map((id) =>
+            BOOK_CHAPTERS.find((c) => c.id === id)?.chapter
+          )
+        ),
+      ].filter((ch): ch is string => Boolean(ch)),
+    [selectedIds]
+  );
+
+  const practiseSelectedHref = `/practice?${selectedChapters
     .map((ch) => `chapter=${encodeURIComponent(ch)}`)
     .join("&")}`;
 
@@ -135,20 +155,20 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {selected.length > 0 && (
+      {selectedChapters.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
           <span className="text-sm font-medium">
-            {selected.length} chapter{selected.length === 1 ? "" : "s"} selected:
+            {selectedChapters.length} chapter{selectedChapters.length === 1 ? "" : "s"} selected:
           </span>
-          {selected.map((ch) => (
+          {selectedChapters.map((name) => (
             <span
-              key={ch}
+              key={name}
               className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
             >
-              {ch}
+              {name}
               <button
-                onClick={() => toggleChapter(ch)}
-                aria-label={`Remove ${ch}`}
+                onClick={() => removeChapterName(name)}
+                aria-label={`Remove ${name}`}
                 className="text-zinc-400 hover:text-red-500"
               >
                 <X className="h-3 w-3" />
@@ -252,7 +272,7 @@ export default function SearchPage() {
                     {chapters.map((c) => {
                       const style =
                         MODULE_STYLES[MODULE_NAME[c.module]] ?? "";
-                      const isSelected = selected.includes(c.chapter);
+                      const isSelected = selectedIds.includes(c.id);
                       return (
                         <div
                           key={c.id}
@@ -289,7 +309,7 @@ export default function SearchPage() {
                           )}
                           <div className="mt-3 flex items-center gap-2">
                           <button
-                            onClick={() => toggleChapter(c.chapter)}
+                            onClick={() => toggleChapter(c.id)}
                             aria-pressed={isSelected}
                             className={`flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors ${
                               isSelected
