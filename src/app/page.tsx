@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Search, Brain, Award, CheckCircle, Timer, Layers, Target, TrendingUp } from "lucide-react";
+import { BookOpen, Search, Brain, Award, CheckCircle, Timer, Layers, Target, TrendingUp, Zap } from "lucide-react";
 import { DESIGN_LAWS } from "@/lib/design/laws";
 
 const STEPS = [
@@ -80,6 +80,20 @@ export default function Home() {
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <Link
+            href="/skills"
+            className="group flex flex-col rounded-lg border border-zinc-200 bg-white p-5 transition-shadow hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60"
+          >
+            <Zap className="h-6 w-6 text-zinc-600" />
+            <p className="mt-3 font-semibold group-hover:underline">
+              Skills gym
+            </p>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              Drill techniques, not just chapters: graphs &amp;
+              transformations, differentiation, integration, trigonometry,
+              vectors, mechanics and more.
+            </p>
+          </Link>
           <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900/60">
             <Brain className="h-6 w-6 text-purple-600" />
             <p className="mt-3 font-semibold">Neural-net validated</p>
