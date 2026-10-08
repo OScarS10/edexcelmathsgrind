@@ -1,6 +1,7 @@
 import { StudentProfile, AttemptRecord } from "@/lib/profile/student-profile";
 import { specForChapter } from "@/data/chapters/spec-map";
 import { isDue, daysUntil } from "@/lib/learning/spaced-repetition";
+import { GradeBand, bandFor } from "@/lib/learning/grade-model";
 
 export type TopicStatus = "unseen" | "developing" | "secure" | "at-risk" | "gap";
 
@@ -107,8 +108,9 @@ export interface GradeEstimate {
 }
 
 /**
- * Honest prediction: recent practice accuracy mapped to a grade band with an
- * explicit range. Never claims more certainty than the evidence supports.
+ * Honest prediction: recent practice accuracy mapped to a grade band via
+ * recent grade boundaries, with an explicit range. Never claims more
+ * certainty than the evidence supports.
  */
 export function estimateGrade(profile: StudentProfile): GradeEstimate | null {
   const recent = profile.attempts.slice(-80);
@@ -117,18 +119,10 @@ export function estimateGrade(profile: StudentProfile): GradeEstimate | null {
   const accuracy =
     recent.reduce((s, a) => s + (a.correct ? 1 : 0), 0) / recent.length;
 
-  const bands = [
-    { max: 0.5, band: "E" },
-    { max: 0.6, band: "D" },
-    { max: 0.7, band: "C" },
-    { max: 0.8, band: "B" },
-    { max: 0.9, band: "A" },
-    { max: 1.01, band: "A*" },
-  ];
-  const idx = bands.findIndex((b) => accuracy < b.max);
-  const band = bands[Math.max(0, idx)].band;
+  const pct = accuracy * 100;
+  const band = bandFor(pct);
 
-  const order = ["E", "D", "C", "B", "A", "A*"];
+  const order: GradeBand[] = ["U", "E", "D", "C", "B", "A", "A*"];
   const i = order.indexOf(band);
   const spread = recent.length < 30 ? 2 : 1;
   const lo = order[Math.max(0, i - spread)];
@@ -138,8 +132,8 @@ export function estimateGrade(profile: StudentProfile): GradeEstimate | null {
     band,
     range: lo === hi ? band : `${lo}–${hi}`,
     confidence: recent.length >= 50 ? "medium" : "low",
-    accuracy: Math.round(accuracy * 100),
-    basis: `Based on your last ${recent.length} questions (${Math.round(accuracy * 100)}% accuracy). Grade boundaries vary by paper — treat this as a rehearsal estimate, not a prediction.`,
+    accuracy: Math.round(pct),
+    basis: `Based on your last ${recent.length} questions (${Math.round(pct)}% accuracy), mapped through recent Edexcel boundaries (midpoints: A* ~75%, A ~64%). In-app sets are shorter than exam papers, so treat this as a rehearsal estimate, not a prediction.`,
   };
 }
 

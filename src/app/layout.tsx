@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Edexcel A-Level Maths Revision Bot",
   description:
-    "Practice Edexcel A-Level (GCE) Mathematics with past-paper style questions, neural-network validated generation, chapter search and step-by-step explanations.",
+    "Practice Edexcel A-Level (GCE) Mathematics with past-paper style questions, computer-algebra-checked generation, chapter search and step-by-step explanations.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

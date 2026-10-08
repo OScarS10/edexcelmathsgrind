@@ -1,4 +1,5 @@
 import type { SessionMode } from "@/lib/profile/student-profile";
+import { DEFAULT_USER, getActiveUser } from "@/lib/profile/accounts";
 
 /**
  * Session log database — browser IndexedDB.
@@ -7,6 +8,8 @@ import type { SessionMode } from "@/lib/profile/student-profile";
  * quota of localStorage, indexed by start time so the log can be rendered
  * newest-first. Every function degrades silently when IndexedDB is
  * unavailable (old browsers, private mode) so the app keeps working.
+ * Records are scoped per account (records saved before accounts existed
+ * belong to the default account).
  */
 
 export interface SessionResultItem {
@@ -20,6 +23,7 @@ export interface SessionResultItem {
 
 export interface SessionRecord {
   id: string;
+  user: string;
   startedAt: number;
   finishedAt: number;
   abandoned: boolean;
@@ -34,6 +38,11 @@ export interface SessionRecord {
   slowCount: number;
   strongest: string | null;
   results: SessionResultItem[];
+}
+
+/** The account that owns the current browser session. */
+export function sessionUser(): string {
+  return getActiveUser();
 }
 
 const DB_NAME = "maths-app";
@@ -88,15 +97,19 @@ export async function saveSessionRecord(record: SessionRecord): Promise<void> {
   try {
     const db = await openDb();
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(record);
+    tx.objectStore(STORE).put({ ...record, user: record.user || getActiveUser() });
     await txDone(tx);
   } catch {
     // IndexedDB is a bonus — losing a session log must never break practice.
   }
 }
 
-export async function listSessionRecords(limit = 100): Promise<SessionRecord[]> {
+export async function listSessionRecords(
+  limit = 100,
+  user: string | null = null
+): Promise<SessionRecord[]> {
   try {
+    const active = user ?? getActiveUser();
     const db = await openDb();
     const tx = db.transaction(STORE, "readonly");
     const store = tx.objectStore(STORE);
@@ -105,7 +118,9 @@ export async function listSessionRecords(limit = 100): Promise<SessionRecord[]> 
       limit
     );
     await txDone(tx);
-    return all.sort((a, b) => b.startedAt - a.startedAt);
+    return all
+      .filter((r) => (r.user ?? DEFAULT_USER) === active)
+      .sort((a, b) => b.startedAt - a.startedAt);
   } catch {
     return [];
   }
@@ -125,9 +140,23 @@ export async function countSessionRecords(): Promise<number> {
 
 export async function clearSessionRecords(): Promise<void> {
   try {
+    const active = getActiveUser();
     const db = await openDb();
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).clear();
+    const store = tx.objectStore(STORE);
+    await new Promise<void>((resolve, reject) => {
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          if ((cursor.value.user ?? DEFAULT_USER) === active) cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      req.onerror = () => reject(req.error ?? new Error("Failed to clear sessions"));
+    });
     await txDone(tx);
   } catch {
     // ignore

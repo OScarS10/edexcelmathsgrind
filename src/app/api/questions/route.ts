@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     questions,
     count: questions.length,
-    source: "edexcel-exam-bank + neural-network generator",
+    source: "edexcel-exam-bank + generator",
     params,
   });
 }

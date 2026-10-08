@@ -13,37 +13,54 @@ export interface MarkAward {
 }
 
 /**
- * Mark scheme for a question. Bank seeds may carry an explicit scheme;
- * otherwise one is synthesised the way Edexcel papers are laid out:
- * method marks for the working, an accuracy mark for the final answer.
+ * Mark scheme for a question. Bank seeds carry a hand-written scheme
+ * (see src/data/questions/mark-schemes.ts); otherwise one is synthesised the
+ * way Edexcel papers are laid out - method marks shaped into common mark
+ * patterns, and an accuracy mark for the final answer.
  */
 export function markSchemeFor(question: GeneratedQuestion): MarkComponent[] {
   if (question.markScheme?.length) return question.markScheme;
 
   const marks = Math.max(1, question.marks);
-  const steps = question.steps?.length ?? 0;
+  const stepNotes =
+    question.steps?.map((s, i) => `Method — correct working in step ${i + 1}`) ??
+    [];
 
-  if (marks === 1 || steps === 0) {
-    return [{ type: "A", marks, note: "Accuracy — correct final answer" }];
+  const take = (type: MarkComponent["type"], note: string): MarkComponent => ({
+    type,
+    marks: 1,
+    note,
+  });
+
+  if (marks === 1) {
+    return [take("A", "Accuracy — correct final answer")];
   }
 
-  const components: MarkComponent[] = [];
-  const remaining = marks - 1;
-  const perStep = Math.floor(remaining / steps);
-  const extra = remaining - perStep * steps;
+  // Edexcel paper mark-schemes follow well-worn shapes by mark total.
+  const shape: Array<MarkComponent["type"]> =
+    marks === 2
+      ? ["M", "A"]
+      : marks === 3
+        ? ["M", "M", "A"]
+        : marks === 4
+          ? ["M", "dM", "A", "A"]
+          : marks === 5
+            ? ["B", "M", "M", "A", "A"]
+            : ["B", "M", "M", "dM", "A", "A"];
 
-  for (let i = 0; i < steps; i++) {
-    const m = perStep + (i < extra ? 1 : 0);
-    if (m > 0) {
-      components.push({
-        type: "M",
-        marks: m,
-        note: `Method — correct working in step ${i + 1}`,
-      });
+  let step = 0;
+  return shape.map((type) => {
+    if (type === "A") {
+      return take("A", "Accuracy — correct final answer");
     }
-  }
-  components.push({ type: "A", marks: 1, note: "Accuracy — correct final answer" });
-  return components;
+    if (type === "B") {
+      return take("B", "Independent — correct statement or value, no working needed");
+    }
+    if (type === "dM") {
+      return take("dM", "Dependent method — correct step following your working");
+    }
+    return take("M", stepNotes[step++] ?? "Method — a correct mathematical step");
+  });
 }
 
 export interface AwardInput {

@@ -1,13 +1,13 @@
 # Edexcel A-Level Maths Revision Bot
 
-A web revision tool for **Pearson Edexcel A-Level Mathematics (GCE, 9MA0)** with practice questions modelled on real past-paper questions, chapter search, a neural network that validates question solvability before questions are shown, and full worked explanations whenever an answer is wrong.
+A web revision tool for **Pearson Edexcel A-Level Mathematics (GCE, 9MA0)** with practice questions written in the style of past-paper questions, chapter search, a solvability screen before questions are shown, and full worked explanations whenever an answer is wrong.
 
 ## Features
 
 - **Exam-style question bank** — original questions written in the style of Edexcel past papers across Pure Mathematics, Statistics and Mechanics, plus 6 Large Data Set questions (lds-001…006) and 12 TMUA-style questions (tm-001…012). Every question carries its spec point, exam theme, command words, precision rules and an examiner-style mark scheme.
 - **SymPy verification (anti-hallucination)** — every answer is re-derived independently by Python + SymPy before it ships: the hand-written bank (90 checks) and 18 generation templates sampled across 475 parameter sets (derivatives, integrals, equation solutions, inequalities, rounding to s.f., statistics, dice counts, vectors). The LLM writes the question; **code verifies the maths**. Run `npm run verify:generated` (regenerates + checks all 564, non-zero exit on failure). This pipeline already caught 4 real bugs (wrong definite-integral formula, inverted moments wording, rounding that broke equilibrium, degenerate questions).
 - **Runtime SymPy second opinion** — if mathjs can't confirm an answer as correct, the checker asks an optional SymPy sidecar (`python/verify_service.py`, port 5399). Set `SYMPY_VERIFY_URL` and answers like `(x-3)(x-4)` vs `x^2 - 7x + 12` resolve symbolically; without it the checker stays conservative.
-- **Neural network question validation** — a multilayer perceptron (10→16→8→1) is trained with backpropagation on question-quality features (has answer, has working, balanced notation, instruction verbs, length…). Generated questions are only served if the network clears a confidence threshold; candidates below threshold are regenerated (best-of-N gating).
+- **Solvability screen** — generated questions are correct by construction (every answer is produced by a programmatic solver), and a lightweight trained model (a small multilayer perceptron over question-quality features: has answer, has working, balanced notation, verbs, length…) filters the *style* of candidate questions before one is served; below-threshold candidates regenerate (best-of-N gating). It's a quality filter on presentation, not the correctness guarantee.
 - **Question generation** — parameterised templates with randomised values plus programmatic solvers, so every generated answer is verified correct by construction. Falls back automatically when the bank has no questions matching your filters.
 - **Forgiving answer marking (Postel's Law)** — accepts LaTeX, plain text, fractions, equivalent expressions (symbolically simplified via mathjs), comma/`or`-separated answer sets, bare "12" for "x = 12", and ignores formatting noise. Sign errors are correctly rejected.
 - **Explanations on wrong answers** — style-aware (full/partial/terse, auto-fading with accuracy), with step-by-step solution, likely misconception detected from the student's answer (e.g. missing `+c`, missing second trig solution, sign flip), spec-point tags and GCSE prerequisite notes.
@@ -21,9 +21,9 @@ A web revision tool for **Pearson Edexcel A-Level Mathematics (GCE, 9MA0)** with
 - **TMUA hub** (`/tmua`) — evidence for the two papers' formats, a Paper 2 reasoning toolkit (counterexamples, hidden assumptions, necessary vs sufficient, consistency, data-in-context), proof techniques, and a seven-bridge A-level→Further Maths guide.
 - **Deep links** — `/practice?chapter=Differentiation` starts a single-chapter session; `/practice?mode=tmua|foundation|mistakes` starts mode-specific sets.
 
-## UX laws applied
+## UX principles applied
 
-The interface deliberately implements 22 evidence-based laws (Hick's, Fitts's, Jakob's, Miller's, Doherty, Von Restorff, serial position, peak-end, Zeigarnik, Prägnanz, proximity, similarity, uniform connectedness, Tesler's, Postel's, Parkinson's, closure, common region, Occam's Razor, Pareto, aesthetic-usability, minimise target distance) — each one is documented in-app on the home page under "Built on evidence-based UX laws".
+The interface deliberately applies 22 widely cited UX laws and heuristics (Hick's, Fitts's, Jakob's, Miller's, Doherty, Von Restorff, serial position, peak-end, Zeigarnik, Prägnanz, proximity, similarity, uniform connectedness, Tesler's, Postel's, Parkinson's, closure, common region, Occam's Razor, Pareto, aesthetic-usability, minimise target distance) — each one is documented in-app on the home page under "Built on UX design principles". They're design rules of thumb, not measured results.
 
 ## Tech stack
 

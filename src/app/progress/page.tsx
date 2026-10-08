@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckCircle,
   Copy,
+  Download,
   GraduationCap,
   History,
   Printer,
@@ -20,6 +21,7 @@ import {
   parseProfile,
   resetProfile,
   setExamDate,
+  updateSettings,
   useProfileSnapshot,
 } from "@/lib/profile/student-profile";
 import {
@@ -35,10 +37,14 @@ import {
   recurringMisconceptions,
   summaryStats,
 } from "@/lib/learning/diagnosis";
+import { exportAllData } from "@/lib/export-profile";
 import {
-  GradePrediction,
   predictGrade,
+  gradeForPaperPct,
+  BOUNDARY_SOURCE,
 } from "@/lib/learning/grade-model";
+import { GradeModelView } from "@/components/progress/grade-model-view";
+import { useActiveUserSnapshot } from "@/lib/profile/accounts";
 import {
   SessionRecord,
   clearSessionRecords,
@@ -103,78 +109,10 @@ function toDateInput(ts: number | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function GradeModelView({ pred }: { pred: GradePrediction }) {
-  const activityTone =
-    pred.activity === "improving"
-      ? "text-emerald-700 dark:text-emerald-400"
-      : pred.activity === "declining"
-        ? "text-red-700 dark:text-red-400"
-        : "text-zinc-500";
-  const activityLabel =
-    pred.activity === "improving"
-      ? `+${pred.improvementPerWeek.toFixed(1)} pts/wk`
-      : pred.activity === "declining"
-        ? `${pred.improvementPerWeek.toFixed(1)} pts/wk`
-        : "steady";
-  const ci = pred.interval
-    ? `${Math.round(pred.interval.lo)}–${Math.round(pred.interval.hi)}%`
-    : "—";
-  const probs = [...pred.probabilities].sort((a, b) => b.p - a.p).slice(0, 4);
-
-  return (
-    <div>
-      <div className="flex items-baseline gap-3">
-        <span className="text-4xl font-black tracking-tight">{pred.predictedBand}</span>
-        <span className="text-sm font-semibold text-zinc-500">
-          range {pred.predictedRange?.join("–")}
-        </span>
-        <span className={`ml-auto text-xs font-semibold ${activityTone}`}>{activityLabel}</span>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-        Expected paper score ~{pred.accuracy.toFixed(0)}% (90% interval {ci}).
-        {pred.pace !== null ? ` Pace ${pred.pace.toFixed(2)} marks/min.` : ""}
-      </p>
-
-      <div className="mt-4 flex items-end gap-2">
-        {pred.projections.slice(0, 6).map((p) => (
-          <div
-            key={p.weeksFromNow}
-            className="flex flex-1 flex-col items-center gap-1"
-            title={`${p.weeksFromNow}w: ${p.band}, ~${p.expected.toFixed(0)}% (${Math.round(p.lo)}–${Math.round(p.hi)})`}
-          >
-            <div className="flex h-16 w-full items-end rounded bg-zinc-100 dark:bg-zinc-800">
-              <div
-                className="w-full rounded bg-blue-500"
-                style={{ height: `${Math.max(2, p.expected)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-bold text-zinc-500">{p.weeksFromNow}w</span>
-            <span className="text-xs font-black">{p.band}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {probs.map((p) => (
-          <span
-            key={p.band}
-            className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-          >
-            {p.band} <span className="font-normal text-zinc-500">{Math.round(p.p * 100)}%</span>
-          </span>
-        ))}
-      </div>
-      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-        EWMA of your whole attempt history; intervals widen further out on purpose. Boundaries are
-        a heuristic — check the exam board&apos;s published grade before exam day.
-      </p>
-    </div>
-  );
-}
-
 export default function ProgressPage() {
   const raw = useProfileSnapshot();
   const profile = useMemo(() => parseProfile(raw), [raw]);
+  const activeUser = useActiveUserSnapshot();
   const [copied, setCopied] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmClearSessions, setConfirmClearSessions] = useState(false);
@@ -185,7 +123,7 @@ export default function ProgressPage() {
 
   useEffect(() => {
     let alive = true;
-    void listSessionRecords(200).then((rows) => {
+    void listSessionRecords(200, activeUser).then((rows) => {
       if (!alive) return;
       setSessions(rows);
       setSessionsReady(true);
@@ -195,10 +133,10 @@ export default function ProgressPage() {
       alive = false;
       window.clearInterval(refresh);
     };
-  }, []);
+  }, [activeUser]);
 
   const readSessions = () => {
-    void listSessionRecords(200).then((rows) => {
+    void listSessionRecords(200, activeUser).then((rows) => {
       setSessions(rows);
       setSessionsReady(true);
     });
@@ -272,7 +210,10 @@ export default function ProgressPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <GraduationCap className="mx-auto h-10 w-10 text-zinc-400" aria-hidden />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Your progress lives here</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          Account: {activeUser}
+        </p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">Your progress lives here</h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-zinc-600 dark:text-zinc-400">
           Answer a few questions and this page fills up with an honest gap analysis, a rehearsal
           grade estimate, spaced-repetition due dates and a plan that works backwards from your
@@ -302,7 +243,7 @@ export default function ProgressPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Your progress</h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Honest, evidence-based — built from {stats.totalAttempts} recorded attempts.
+            {activeUser}&apos;s evidence-based picture — built from {stats.totalAttempts} recorded attempts.
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -311,6 +252,13 @@ export default function ProgressPage() {
             className="flex h-9 items-center gap-1.5 rounded-md border border-zinc-300 px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
             <Copy className="h-3.5 w-3.5" aria-hidden /> {copied ? "Copied" : "Copy report"}
+          </button>
+          <button
+            onClick={() => void exportAllData()}
+            className="flex h-9 items-center gap-1.5 rounded-md border border-zinc-300 px-3 text-xs font-semibold hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            title="Download a JSON backup of this browser's profile and session log"
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden /> Export data
           </button>
           <button
             onClick={() => window.print()}
@@ -340,10 +288,32 @@ export default function ProgressPage() {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {/* Grade prediction & modelling */}
         <Card>
-          <SectionTitle note="modelled from your attempt history — never a promise">
-            Grade prediction
-          </SectionTitle>
-          {pred.usable && pred.predictedBand ? (
+          <div className="flex items-start justify-between gap-2">
+            <SectionTitle note="modelled from your attempt history — never a promise">
+              Grade prediction
+            </SectionTitle>
+            <button
+              onClick={() =>
+                updateSettings({
+                  hideGradePredictions: !profile.settings.hideGradePredictions,
+                })
+              }
+              className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                profile.settings.hideGradePredictions
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-zinc-300 text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              }`}
+              title="Hide grade estimates if they stress you out — practice continues to be tracked"
+            >
+              {profile.settings.hideGradePredictions ? "Grade estimates hidden" : "Hide grade estimates"}
+            </button>
+          </div>
+          {profile.settings.hideGradePredictions ? (
+            <div className="rounded-md border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-500 dark:border-zinc-700">
+              Grade estimates are hidden. Your attempts still feed the gap analysis,
+              spaced review and priorities.
+            </div>
+          ) : pred.usable && pred.predictedBand ? (
             <GradeModelView pred={pred} />
           ) : (
             <div>
@@ -360,6 +330,11 @@ export default function ProgressPage() {
                 </div>
               )}
             </div>
+          )}
+          {!profile.settings.hideGradePredictions && (
+            <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+              Band boundaries: {BOUNDARY_SOURCE}.
+            </p>
           )}
         </Card>
 
@@ -576,7 +551,7 @@ export default function ProgressPage() {
 
         {/* Calibration + misconceptions */}
         <Card>
-          <SectionTitle>Confidence & patterns</SectionTitle>
+          <SectionTitle note="recurring wrong-answer patterns — possible causes, not diagnoses">Confidence & patterns</SectionTitle>
           {calib ? (
             <p className="text-sm leading-relaxed">{calib.message}</p>
           ) : (
@@ -716,7 +691,11 @@ export default function ProgressPage() {
                       {s.correct}/{s.attempts} correct
                     </div>
                     <div className="text-xs text-zinc-500">
-                      {s.marksAwarded}/{s.marksAvailable} mk · {fmtDur(s.results.reduce((sum, r) => sum + r.timeSeconds, 0))} · {s.pace.toFixed(1)} mk/min
+                      {s.marksAwarded}/{s.marksAvailable} mk
+                      {s.marksAvailable > 0 && !profile.settings.hideGradePredictions
+                        ? ` · ${gradeForPaperPct((s.marksAwarded / s.marksAvailable) * 100).band}`
+                        : ""}{" "}
+                      · {fmtDur(s.results.reduce((sum, r) => sum + r.timeSeconds, 0))} · {s.pace.toFixed(1)} mk/min
                     </div>
                   </div>
                 </li>
@@ -725,6 +704,12 @@ export default function ProgressPage() {
             {sessions.length > 8 && (
               <p className="mt-2 text-xs text-zinc-500">
                 Showing the latest 8 of {sessions.length} — the database keeps every session.
+              </p>
+            )}
+            {!profile.settings.hideGradePredictions && (
+              <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                Band letters convert each session&apos;s marks percentage through {BOUNDARY_SOURCE} — a
+                short set is not a full paper, so treat them as a rough conversion.
               </p>
             )}
             <div className="mt-3 flex items-center gap-3 print:hidden">

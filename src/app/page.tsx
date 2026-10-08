@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { BookOpen, Search, Brain, Award, CheckCircle, Timer, Layers, Target, TrendingUp, Zap } from "lucide-react";
-import { DESIGN_LAWS } from "@/lib/design/laws";
 
 const STEPS = [
   {
@@ -9,11 +8,11 @@ const STEPS = [
   },
   {
     title: "2. Answer exam-style questions",
-    body: "Questions are modelled on Edexcel past papers and validated by a neural network before they reach you.",
+    body: "Questions are written in the style of Edexcel past papers and pass a computer-algebra solvability check before they reach you.",
   },
   {
     title: "3. Learn from mistakes",
-    body: "Wrong answers unlock graded hints first, then a full worked explanation with an examiner-style mark breakdown and the likely misconception.",
+    body: "Wrong answers unlock graded hints first, then a full worked explanation with an examiner-style mark breakdown and a possible cause for the slip.",
   },
 ];
 
@@ -38,10 +37,10 @@ export default function Home() {
             A-Level Maths revision that marks itself
           </h1>
           <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
-            Past-paper style practice questions, neural-network validated
-            generation, chapter search and instant worked explanations when you
-            get something wrong — plus spaced repetition, an honest gap analysis
-            and TMUA admissions practice.
+            Past-paper style practice questions with computer-algebra checking,
+            chapter search and instant worked explanations when you get
+            something wrong — plus spaced repetition, an honest gap analysis and
+            TMUA admissions practice.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -96,10 +95,11 @@ export default function Home() {
           </Link>
           <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900/60">
             <Brain className="h-6 w-6 text-purple-600" />
-            <p className="mt-3 font-semibold">Neural-net validated</p>
+            <p className="mt-3 font-semibold">Solvability-checked</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              A trained MLP scores every generated question for solvability —
-              only questions clearing the confidence threshold reach you.
+              Every generated question is screened for sensible inputs and a
+              self-consistent answer before it&apos;s shown. It&apos;s a quality
+              check — not a substitute for working a problem through.
             </p>
           </div>
           <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900/60">
@@ -175,40 +175,6 @@ export default function Home() {
             ))}
           </div>
         </div>
-
-        <section className="mt-12">
-          <h2 className="text-xl font-bold">
-            Built on evidence-based UX laws
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Every screen in this app applies these {DESIGN_LAWS.length} laws
-            deliberately:
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {DESIGN_LAWS.map((law) => (
-              <details
-                key={law.name}
-                className="group rounded-lg border border-zinc-200 bg-white p-4 open:shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60"
-              >
-                <summary className="cursor-pointer list-none font-semibold marker:hidden">
-                  <span className="flex items-center justify-between gap-2">
-                    {law.name}
-                    <span className="text-zinc-400 transition-transform group-open:rotate-45">
-                      +
-                    </span>
-                  </span>
-                </summary>
-                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                  <em>{law.principle}</em>
-                </p>
-                <p className="mt-2 text-sm">
-                  <span className="font-medium">Applied:</span>{" "}
-                  {law.appliedAs}
-                </p>
-              </details>
-            ))}
-          </div>
-        </section>
 
         <footer className="mt-12 border-t border-zinc-200 pt-6 text-xs text-zinc-500 dark:border-zinc-800">
           Independent revision tool for Pearson Edexcel A-Level Mathematics.

@@ -26,7 +26,8 @@ import {
 } from "@/lib/profile/student-profile";
 import { autoFeedbackDepth, buildHints, maxHintDepth } from "@/lib/learning/hints";
 import { dueTopics, diagnoseTopics, priorities } from "@/lib/learning/diagnosis";
-import { SessionRecord, saveSessionRecord } from "@/lib/db/session-db";
+import { SessionRecord, saveSessionRecord, sessionUser } from "@/lib/db/session-db";
+import { ACCOUNT_SWITCH_EVENT, inProgressSessionKey } from "@/lib/profile/accounts";
 import { badgeCommandWords, precisionFlags } from "@/lib/exam/command-words";
 import { MarkAward, StepVerdict, awardMarks } from "@/lib/exam/mark-scheme";
 import { specForChapter } from "@/data/chapters/spec-map";
@@ -41,52 +42,28 @@ import {
   StepVerdictList,
   WorkingEntry,
 } from "@/components/practice/panels";
+import { SessionSummary } from "@/components/practice/session-summary";
+import {
+  Conditions,
+  SessionState,
+} from "@/components/practice/session-types";
 import {
   ArrowRight,
   BookOpen,
   CheckCircle,
   Clock,
-  Flag,
   History,
   Layers,
-  RotateCcw,
   ShieldCheck,
   Shuffle,
   Sparkles,
-  Target,
   Timer,
   XCircle,
 } from "lucide-react";
 
 type Phase = "setup" | "quiz" | "summary";
 type CheckStatus = "idle" | "checking" | "checked";
-type Conditions = "gentle" | "realistic" | "strict";
 
-interface QuestionResult {
-  correct: boolean;
-  userAnswer: string;
-  marksAwarded: number;
-  marksAvailable: number;
-  flags: string[];
-  timeSeconds: number;
-  workingUsed: boolean;
-  stepsMatched: number;
-  chapter: string;
-  title: string;
-}
-
-interface SessionState {
-  questions: GeneratedQuestion[];
-  index: number;
-  score: number;
-  mode: SessionMode;
-  conditions: Conditions;
-  questionStart: number;
-  startedAt?: number;
-  results: QuestionResult[];
-}
-
-const STORAGE_KEY = "edexcel-practice-session";
 const FOUNDATION_CHAPTERS = [
   "Algebra and functions",
   "Numerical methods",
@@ -98,16 +75,22 @@ let storedRaw: string | null | undefined;
 function subscribeToSession(onChange: () => void) {
   window.addEventListener("storage", onChange);
   window.addEventListener("session-update", onChange);
+  window.addEventListener(ACCOUNT_SWITCH_EVENT, handleAccountSwitch);
   return () => {
     window.removeEventListener("storage", onChange);
     window.removeEventListener("session-update", onChange);
+    window.removeEventListener(ACCOUNT_SWITCH_EVENT, handleAccountSwitch);
   };
+}
+
+function handleAccountSwitch() {
+  storedRaw = undefined;
 }
 
 function readStoredSession(): string | null {
   if (storedRaw === undefined) {
     try {
-      storedRaw = window.localStorage.getItem(STORAGE_KEY);
+      storedRaw = window.localStorage.getItem(inProgressSessionKey());
     } catch {
       storedRaw = null;
     }
@@ -121,8 +104,8 @@ function readServerStoredSession(): string | null {
 
 function writeStoredSession(value: string | null) {
   try {
-    if (value === null) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, value);
+    if (value === null) window.localStorage.removeItem(inProgressSessionKey());
+    else window.localStorage.setItem(inProgressSessionKey(), value);
   } catch {
     // storage full/unavailable — non-fatal
   }
@@ -240,6 +223,7 @@ function buildSessionRecord(session: SessionState, abandoned: boolean): SessionR
 
   return {
     id: `s-${startedAt}`,
+    user: sessionUser(),
     startedAt,
     finishedAt: Date.now(),
     abandoned,
@@ -851,6 +835,30 @@ function PracticeInner() {
                     ? "Realistic: clock runs, one-line feedback like a mark scheme — hints still available."
                     : "Strict: countdown at 1 mark/min, no hints. Build up to this when you're ready."}
               </p>
+              <div className="mt-3">
+                <div className="mb-1.5 text-xs font-semibold text-zinc-500">
+                  Access arrangements
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {([0, 25, 50] as const).map((pct) => (
+                    <button
+                      key={pct}
+                      onClick={() => updateSettings({ timingExtraPercent: pct })}
+                      className={`h-9 rounded-md border px-3 text-xs font-medium transition-colors ${
+                        (profile.settings.timingExtraPercent ?? 0) === pct
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                      }`}
+                      aria-pressed={(profile.settings.timingExtraPercent ?? 0) === pct}
+                    >
+                      {pct === 0 ? "None" : `+${pct}%`}
+                    </button>
+                  ))}
+                  <span className="text-xs text-zinc-500">
+                    extra time on the strict countdown, remembered for next time
+                  </span>
+                </div>
+              </div>
             </fieldset>
           )}
 
@@ -1012,139 +1020,15 @@ function PracticeInner() {
   /* -------------------------------- SUMMARY -------------------------------- */
 
   if (phase === "summary" && session) {
-    const total = session.questions.length;
-    const correct = session.score;
-    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
-    const perfect = correct === total;
-    const marksAwarded = session.results.reduce((s, r) => s + r.marksAwarded, 0);
-    const marksAvailable = session.results.reduce((s, r) => s + r.marksAvailable, 0);
-    const totalTime = session.results.reduce((s, r) => s + r.timeSeconds, 0);
-    const totalMarksAnswered = session.results.reduce(
-      (s, r) => s + Math.max(1, r.marksAvailable),
-      0
-    );
-    const pace = totalTime > 0 ? (totalMarksAnswered / totalTime) * 60 : 0;
-    const slowQuestions = session.results.filter(
-      (r, i) =>
-        r.timeSeconds > (session.questions[i]?.marks ?? 3) * 90 && !r.correct
-    );
-    const sessionByChapter = new Map<string, { seen: number; correct: number }>();
-    for (const r of session.results) {
-      const cur = sessionByChapter.get(r.chapter) || { seen: 0, correct: 0 };
-      cur.seen++;
-      cur.correct += r.correct ? 1 : 0;
-      sessionByChapter.set(r.chapter, cur);
-    }
-    const strongest = [...sessionByChapter.entries()]
-      .map(([chapter, v]) => ({ chapter, ...v }))
-      .filter((v) => v.correct > 0)
-      .sort((a, b) => b.correct / b.seen - a.correct / a.seen)[0];
-    const wrongResults = session.results
-      .map((r, i) => ({ r, q: session.questions[i] }))
-      .filter((x) => x.q && !x.r.correct);
-
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="rounded-lg border border-zinc-200 p-6 text-center dark:border-zinc-800">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950">
-            <Target className="h-7 w-7 text-blue-700 dark:text-blue-300" />
-          </div>
-          <h1 className="mt-4 text-3xl font-bold">
-            {perfect ? "Perfect session" : `You scored ${correct}/${total}`}
-          </h1>
-          <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            {accuracy}% accuracy · {marksAwarded}/{marksAvailable} marks{" "}
-            {marksAvailable > 0 ? "(examiner marking)" : ""} · {fmtTime(totalTime)}{" "}
-            spent
-          </p>
-
-          <div className="mt-4 grid gap-2 text-left sm:grid-cols-3">
-            <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Pace</p>
-              <p className="mt-1 text-lg font-bold">{pace.toFixed(1)} marks/min</p>
-              <p className="text-xs text-zinc-500">benchmark: ~1.0</p>
-            </div>
-            <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Flagged</p>
-              <p className="mt-1 text-lg font-bold">{slowQuestions.length} slow</p>
-              <p className="text-xs text-zinc-500">over time + wrong</p>
-            </div>
-            <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Strongest</p>
-              <p className="mt-1 truncate text-lg font-bold">
-                {strongest ? strongest.chapter : "—"}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {strongest ? `${strongest.correct}/${strongest.seen} today` : "keep going"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-2 text-left">
-            {session.results.map((r, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
-              >
-                <span className="truncate text-zinc-500">
-                  {i + 1}. {r.title}
-                  {r.flags.length > 0 && (
-                    <Flag
-                      className="ml-1 inline h-3 w-3 text-amber-600"
-                      aria-label={r.flags.join(", ")}
-                    />
-                  )}
-                </span>
-                <span className="flex shrink-0 items-center gap-3">
-                  <span className="text-xs text-zinc-500">
-                    {r.marksAwarded}/{r.marksAvailable} mk
-                  </span>
-                  {r.correct ? (
-                    <span className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400">
-                      <CheckCircle className="h-4 w-4" /> Correct
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 font-medium text-red-700 dark:text-red-400">
-                      <XCircle className="h-4 w-4" /> {r.userAnswer}
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-            {wrongResults.length > 0
-              ? `${wrongResults.length} question${wrongResults.length > 1 ? "s" : ""} will come back when spaced repetition says they're due.`
-              : "Everything here is sticking — spaced repetition will spread the reviews out."}
-          </p>
-
-          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <button
-              onClick={() => startSession()}
-              disabled={loading}
-              className="flex h-12 items-center justify-center gap-2 rounded-md bg-blue-600 px-6 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-            >
-              <RotateCcw className="h-4 w-4" /> New set of questions
-            </button>
-            {session.results.some((r) => !r.correct) && (
-              <button
-                onClick={() => startSession({ mode: "mistakes" })}
-                disabled={loading}
-                className="flex h-12 items-center justify-center gap-2 rounded-md border border-zinc-300 px-6 font-medium hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                <History className="h-4 w-4" /> Retry the mistakes now
-              </button>
-            )}
-            <button
-              onClick={quitToSetup}
-              className="h-12 rounded-md border border-zinc-300 px-6 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
-              Change settings
-            </button>
-          </div>
-        </div>
-      </div>
+      <SessionSummary
+        session={session}
+        hideGradePredictions={profile.settings.hideGradePredictions ?? false}
+        loading={loading}
+        onStartNew={() => startSession()}
+        onRetryMistakes={() => startSession({ mode: "mistakes" })}
+        onChangeSettings={quitToSetup}
+      />
     );
   }
 
@@ -1161,7 +1045,8 @@ function PracticeInner() {
   const total = session.questions.length;
   const qNumber = session.index + 1;
   const elapsed = (now - session.questionStart) / 1000;
-  const strictLimit = current.marks * 60;
+  const timingExtra = profile.settings.timingExtraPercent ?? 0;
+  const strictLimit = current.marks * 60 * (1 + timingExtra / 100);
   const remaining = strictLimit - elapsed;
   const hideTopic = session.mode === "mixed";
   const style = resolveStyle(current.chapter);
@@ -1201,7 +1086,9 @@ function PracticeInner() {
               }`}
               title={
                 session.conditions === "strict"
-                  ? "Countdown: 1 mark per minute"
+                  ? timingExtra
+                    ? `Countdown: 1 mark per minute + ${timingExtra}% extra time`
+                    : "Countdown: 1 mark per minute"
                   : "Elapsed time"
               }
             >
@@ -1231,12 +1118,12 @@ function PracticeInner() {
 
       <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {!hideTopic && (
+          {(!hideTopic || !!verdict) && (
             <span className="rounded bg-zinc-100 px-2 py-1 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
               {current.chapter}
             </span>
           )}
-          {!hideTopic && current.specPoint && (
+          {(!hideTopic || !!verdict) && current.specPoint && (
             <span
               className="rounded bg-zinc-100 px-2 py-1 font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
               title="9MA0 specification point"
@@ -1371,6 +1258,7 @@ function PracticeInner() {
                 <p className="text-sm font-semibold">{explanation.headline}</p>
                 {explanation.likelyMisconception && (
                   <p className="rounded bg-white/70 px-3 py-2 text-sm dark:bg-black/40">
+                    <span className="font-semibold">Possible cause: </span>
                     <MathText>{explanation.likelyMisconception}</MathText>
                   </p>
                 )}

@@ -1,6 +1,13 @@
 import { useSyncExternalStore } from "react";
 import { GeneratedQuestion, QuestionDifficulty } from "@/types/question";
 import { scheduleAfter } from "@/lib/learning/spaced-repetition";
+import {
+  DEFAULT_USER,
+  LEGACY_PROFILE_KEY,
+  ACCOUNT_SWITCH_EVENT,
+  getActiveUser,
+  profileKeyFor,
+} from "@/lib/profile/accounts";
 
 export type SessionMode =
   | "practice"
@@ -57,11 +64,15 @@ export interface StudentProfile {
   misconceptions: Record<string, number>;
   fragileIds: string[];
   explainBacks: string[];
-  settings: { feedbackStyle: "auto" | "terse" | "detailed" };
+  settings: {
+    feedbackStyle: "auto" | "terse" | "detailed";
+    timingExtraPercent?: 0 | 25 | 50;
+    hideGradePredictions?: boolean;
+  };
   examDate?: number;
 }
 
-const STORAGE_KEY = "edexcel-student-profile";
+const STORAGE_KEY = () => profileKeyFor(getActiveUser());
 const MAX_ATTEMPTS = 600;
 const MAX_ERRORS = 40;
 
@@ -80,12 +91,18 @@ export function emptyProfile(): StudentProfile {
 
 let cached: string | null | undefined;
 
+function handleAccountSwitch() {
+  cached = undefined;
+}
+
 function subscribe(onChange: () => void) {
   window.addEventListener("storage", onChange);
   window.addEventListener("profile-update", onChange);
+  window.addEventListener(ACCOUNT_SWITCH_EVENT, handleAccountSwitch);
   return () => {
     window.removeEventListener("storage", onChange);
     window.removeEventListener("profile-update", onChange);
+    window.removeEventListener(ACCOUNT_SWITCH_EVENT, handleAccountSwitch);
   };
 }
 
@@ -96,7 +113,7 @@ function readServer(): string | null {
 function readClient(): string | null {
   if (cached === undefined) {
     try {
-      cached = window.localStorage.getItem(STORAGE_KEY);
+      cached = window.localStorage.getItem(STORAGE_KEY());
     } catch {
       cached = null;
     }
@@ -106,12 +123,12 @@ function readClient(): string | null {
 
 function writeProfile(profile: StudentProfile) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+    window.localStorage.setItem(STORAGE_KEY(), JSON.stringify(profile));
   } catch {
     // storage full — drop oldest attempts and retry once
     const trimmed = { ...profile, attempts: profile.attempts.slice(-150) };
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      window.localStorage.setItem(STORAGE_KEY(), JSON.stringify(trimmed));
     } catch {
       /* unavailable — non-fatal */
     }
@@ -119,6 +136,24 @@ function writeProfile(profile: StudentProfile) {
   cached = JSON.stringify(profile);
   window.dispatchEvent(new Event("profile-update"));
 }
+
+let migrationDone = false;
+function ensureAccountMigration() {
+  if (migrationDone || typeof window === "undefined") return;
+  migrationDone = true;
+  try {
+    const legacy = window.localStorage.getItem(LEGACY_PROFILE_KEY);
+    if (!legacy) return;
+    const target = profileKeyFor(DEFAULT_USER);
+    if (!window.localStorage.getItem(target)) {
+      // First run with accounts: adopt the pre-accounts profile as Oscar's.
+      window.localStorage.setItem(target, legacy);
+    }
+  } catch {
+    // ignore
+  }
+}
+ensureAccountMigration();
 
 export function getProfile(): StudentProfile {
   const raw = readClient();

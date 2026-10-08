@@ -16,15 +16,30 @@ import { SessionRecord } from "@/lib/db/session-db";
 export type GradeBand = "A*" | "A" | "B" | "C" | "D" | "E" | "U";
 
 export const GRADE_BANDS: GradeBand[] = ["U", "E", "D", "C", "B", "A", "A*"];
-const BAND_FLOORS: Record<GradeBand, number> = {
+
+/**
+ * Percentage-of-marks grade bands, calibrated to real Edexcel 9MA0 grade
+ * boundaries rather than round numbers. Boundaries move every session —
+ * 2019–2024 sittings have ranged roughly A* 70–77, A 62–67, B 52–58,
+ * C 42–48, D 33–39, E 25–31 — so this table is a midpoint, not a promise.
+ */
+export const GRADE_BOUNDARIES: Record<GradeBand, number> = {
   U: 0,
-  E: 30,
-  D: 40,
-  C: 50,
-  B: 60,
-  A: 70,
-  "A*": 80,
+  E: 26,
+  D: 34,
+  C: 43,
+  B: 53,
+  A: 64,
+  "A*": 75,
 };
+
+export const BOUNDARY_SOURCE =
+  "midpoints of recent Edexcel 9MA0 boundaries (2019–2024 sittings: A* 70–77%, A 62–67%, B 52–58%, C 42–48%, D 33–39%, E 25–31%)";
+
+export const PAPER_GRADE_DISCLAIMER =
+  "Boundaries move every session and a short practice set is not a full paper — this is a rough conversion of your marks percentage, not an exam grade.";
+
+const BAND_FLOORS: Record<GradeBand, number> = GRADE_BOUNDARIES;
 
 export interface WilsonInterval {
   lo: number;
@@ -67,6 +82,24 @@ export function bandFor(pct: number): GradeBand {
     if (pct >= BAND_FLOORS[b]) return b;
   }
   return "U";
+}
+
+export interface PaperGrade {
+  /** Marks as a percentage of the set/paper. */
+  pct: number;
+  band: GradeBand;
+  /** Next band boundary below the current one, for "just short of…" messaging. */
+  boundaryNote: string;
+}
+
+/**
+ * Convert a marks percentage (from a practice set or a paper) into a band
+ * using recent grade boundaries. Always pair the result with
+ * PAPER_GRADE_DISCLAIMER in the UI.
+ */
+export function gradeForPaperPct(pct: number): PaperGrade {
+  const rounded = Math.round(clamp(pct, 0, 100));
+  return { pct: rounded, band: bandFor(rounded), boundaryNote: BOUNDARY_SOURCE };
 }
 
 /** Wilson score interval for a binary proportion (k correct of n). */
