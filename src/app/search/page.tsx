@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Search } from "lucide-react";
+import { BookOpen, Check, Plus, Search, X } from "lucide-react";
 import { BOOK_CHAPTERS, CHAPTER_BOOKS, findTopicByChapter } from "@/data/chapters/edexcel-chapters";
 import { EdexcelTopic, Level } from "@/types/question";
 
@@ -57,6 +57,18 @@ export default function SearchPage() {
     results: SearchApiResult[];
   } | null>(null);
   const [activeYear, setActiveYear] = useState<YearKey>("all");
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const toggleChapter = (chapter: string) =>
+    setSelected((prev) =>
+      prev.includes(chapter)
+        ? prev.filter((ch) => ch !== chapter)
+        : [...prev, chapter]
+    );
+
+  const practiseSelectedHref = `/practice?${selected
+    .map((ch) => `chapter=${encodeURIComponent(ch)}`)
+    .join("&")}`;
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 200);
@@ -122,6 +134,35 @@ export default function SearchPage() {
           />
         </div>
       </div>
+
+      {selected.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/40">
+          <span className="text-sm font-medium">
+            {selected.length} chapter{selected.length === 1 ? "" : "s"} selected:
+          </span>
+          {selected.map((ch) => (
+            <span
+              key={ch}
+              className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+            >
+              {ch}
+              <button
+                onClick={() => toggleChapter(ch)}
+                aria-label={`Remove ${ch}`}
+                className="text-zinc-400 hover:text-red-500"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <Link
+            href={practiseSelectedHref}
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
+          >
+            <BookOpen className="h-3.5 w-3.5" /> Practise selected
+          </Link>
+        </div>
+      )}
 
       {results !== null ? (
         <div className="mt-6">
@@ -209,11 +250,15 @@ export default function SearchPage() {
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {chapters.map((c) => {
-                      const style = MODULE_STYLES[MODULE_NAME[c.module]] ?? "";
+                      const style =
+                        MODULE_STYLES[MODULE_NAME[c.module]] ?? "";
+                      const isSelected = selected.includes(c.chapter);
                       return (
                         <div
                           key={c.id}
-                          className={`rounded-lg border p-4 transition-shadow hover:shadow-sm ${style}`}
+                          className={`rounded-lg border p-4 transition-shadow hover:shadow-sm ${style} ${
+                            isSelected ? "ring-2 ring-blue-500" : ""
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-semibold leading-snug">
@@ -242,12 +287,30 @@ export default function SearchPage() {
                               </span>
                             </p>
                           )}
+                          <div className="mt-3 flex items-center gap-2">
+                          <button
+                            onClick={() => toggleChapter(c.chapter)}
+                            aria-pressed={isSelected}
+                            className={`flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors ${
+                              isSelected
+                                ? "border-blue-600 bg-blue-600 text-white"
+                                : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Plus className="h-3.5 w-3.5" />
+                            )}
+                            {isSelected ? "Selected" : "Select"}
+                          </button>
                           <Link
                             href={`/practice?chapter=${encodeURIComponent(c.chapter)}`}
-                            className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-semibold text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                           >
                             <BookOpen className="h-3.5 w-3.5" /> Practise
                           </Link>
+                        </div>
                         </div>
                       );
                     })}

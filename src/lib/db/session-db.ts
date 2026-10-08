@@ -1,15 +1,18 @@
 import type { SessionMode } from "@/lib/profile/student-profile";
-import { DEFAULT_USER, getActiveUser } from "@/lib/profile/accounts";
+import {
+  ACCOUNT_SWITCH_EVENT,
+  DEFAULT_USER,
+  getActiveUser,
+} from "@/lib/profile/accounts";
 
 /**
  * Session log database — browser IndexedDB.
  *
  * Persists completed (and abandoned) practice sessions beyond the storage
  * quota of localStorage, indexed by start time so the log can be rendered
- * newest-first. Every function degrades silently when IndexedDB is
- * unavailable (old browsers, private mode) so the app keeps working.
- * Records are scoped per account (records saved before accounts existed
- * belong to the default account).
+ * newest-first. Every account gets its own database so progress never mixes.
+ * Sessions saved before accounts existed live once (and only once) in the
+ * default account's database after a one-time migration.
  */
 
 export interface SessionResultItem {
@@ -45,9 +48,10 @@ export function sessionUser(): string {
   return getActiveUser();
 }
 
-const DB_NAME = "maths-app";
+const DB_NAME_LEGACY = "maths-app";
 const DB_VERSION = 1;
 const STORE = "sessions";
+const MIGRATED_KEY = "edexcel-sessions-migrated";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -55,23 +59,83 @@ function isSupported(): boolean {
   return typeof indexedDB !== "undefined";
 }
 
-function openDb(): Promise<IDBDatabase> {
+function dbNameFor(user: string): string {
+  return `maths-app:${user}`;
+}
+
+function openDbNamed(name: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: "id" });
+        store.createIndex("startedAt", "startedAt");
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("Failed to open session database"));
+  });
+}
+
+/**
+ * One-time step: sessions recorded before accounts existed lived in the
+ * shared `maths-app` database. Adopt them into the default account's own
+ * database the first time that account opens it.
+ */
+async function migrateLegacySessions(target: IDBDatabase): Promise<void> {
+  if (getActiveUser() !== DEFAULT_USER) return;
+  try {
+    if (window.localStorage.getItem(MIGRATED_KEY)) return;
+  } catch {
+    return;
+  }
+  try {
+    const legacy = await openDbNamed(DB_NAME_LEGACY);
+    const rows: unknown[] = await (async () => {
+      const tx = legacy.transaction(STORE, "readonly");
+      try {
+        const all = await requestToPromise(tx.objectStore(STORE).getAll());
+        await txDone(tx);
+        return all;
+      } catch {
+        return [];
+      }
+    })();
+    if (legacy.objectStoreNames.contains(STORE) && rows.length > 0) {
+      const tx = target.transaction(STORE, "readwrite");
+      for (const row of rows) {
+        tx.objectStore(STORE).put({ ...(row as SessionRecord), user: DEFAULT_USER });
+      }
+      await txDone(tx);
+    }
+    legacy.close();
+    try {
+      window.localStorage.setItem(MIGRATED_KEY, "1");
+    } catch {
+      // flag best-effort — migration is idempotent anyway
+    }
+  } catch {
+    // non-fatal: the legacy log stays put and the flag stays unset
+  }
+}
+
+async function openDb(): Promise<IDBDatabase> {
   if (!isSupported()) return Promise.reject(new Error("IndexedDB unavailable"));
   if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          const store = db.createObjectStore(STORE, { keyPath: "id" });
-          store.createIndex("startedAt", "startedAt");
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error ?? new Error("Failed to open session database"));
+    dbPromise = openDbNamed(dbNameFor(getActiveUser())).then(async (db) => {
+      await migrateLegacySessions(db);
+      return db;
     });
   }
   return dbPromise;
+}
+
+// Each account has its own database — drop the cached handle on switch.
+if (typeof window !== "undefined") {
+  window.addEventListener(ACCOUNT_SWITCH_EVENT, () => {
+    dbPromise = null;
+  });
 }
 
 function requestToPromise<T>(req: IDBRequest<T>): Promise<T> {

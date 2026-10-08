@@ -258,7 +258,10 @@ const YEAR_CHOICES: { value: YearChoice; label: string }[] = [
 
 function PracticeInner() {
   const searchParams = useSearchParams();
-  const chapterFilter = searchParams.get("chapter");
+  const chapterFilters = useMemo(
+    () => searchParams.getAll("chapter").filter(Boolean),
+    [searchParams]
+  );
   const urlMode = normaliseMode(searchParams.get("mode"));
   const skillParam = searchParams.get("skill");
   const skill = useMemo<Skill | undefined>(
@@ -338,7 +341,7 @@ function PracticeInner() {
         const conds = opts?.conditions ?? conditions;
         let questions: GeneratedQuestion[] = [];
 
-        if (skill && !chapterFilter && m !== "tmua") {
+        if (skill && chapterFilters.length === 0 && m !== "tmua") {
           const per = Math.max(1, Math.ceil(c / skill.chapters.length));
           const batches = await Promise.all(
             skill.chapters.map((ch) =>
@@ -386,11 +389,25 @@ function PracticeInner() {
             )
           );
           questions = shuffle(batches.flat()).slice(0, c);
+        } else if (chapterFilters.length > 1) {
+          const per = Math.max(1, Math.ceil(c / chapterFilters.length));
+          const batches = await Promise.all(
+            chapterFilters.map((ch) =>
+              fetchQuestions({
+                difficulty: m === "mixed" ? "any" : difficulty,
+                questionType: module !== "any" ? module : undefined,
+                chapter: ch,
+                level,
+                count: per,
+              })
+            )
+          );
+          questions = shuffle(batches.flat()).slice(0, c);
         } else {
           questions = await fetchQuestions({
             difficulty: m === "mixed" ? "any" : difficulty,
             questionType: module !== "any" ? module : undefined,
-            chapter: chapterFilter || undefined,
+            chapter: chapterFilters[0] || undefined,
             level,
             count: c,
           });
@@ -429,7 +446,7 @@ function PracticeInner() {
         setLoading(false);
       }
     },
-    [mode, conditions, difficulty, module, count, chapterFilter, level, skill, saveSession]
+    [mode, conditions, difficulty, module, count, chapterFilters, level, skill, saveSession]
   );
 
   const resumeSession = useCallback(() => {
@@ -676,7 +693,7 @@ function PracticeInner() {
             : "Past-paper style questions with examiner marking, instant feedback and spaced re-testing of what you get wrong."}
         </p>
 
-        {skill && !chapterFilter && (
+        {skill && chapterFilters.length === 0 && (
           <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm dark:border-violet-800 dark:bg-violet-950/40">
             <span>
               Skill drill:{" "}
@@ -694,10 +711,11 @@ function PracticeInner() {
           </div>
         )}
 
-        {chapterFilter && mode !== "foundation" && mode !== "mistakes" && (
+        {chapterFilters.length > 0 && mode !== "foundation" && mode !== "mistakes" && (
           <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm dark:border-blue-800 dark:bg-blue-950/40">
             <span>
-              Practising: <strong>{chapterFilter}</strong>
+              Practising:{" "}
+              <strong>{chapterFilters.join(", ")}</strong>
             </span>
             <Link
               href="/practice"
