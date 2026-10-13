@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Home, Search, Target, TrendingUp, Zap } from "lucide-react";
+import { BookOpen, Home, Library, Search, Target, TrendingUp, Zap } from "lucide-react";
 import { AccountSwitcher } from "@/components/account-switcher";
 
 const LINKS = [
@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/search", label: "Chapters", icon: Search },
   { href: "/progress", label: "Progress", icon: TrendingUp },
   { href: "/tmua", label: "TMUA", icon: Target },
+  { href: "/resources", label: "Resources", icon: Library },
 ];
 
 export function Nav() {

@@ -62,6 +62,20 @@ export default function Home() {
               <Target className="h-4 w-4" /> TMUA practice
             </Link>
           </div>
+          <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle className="h-4 w-4 text-emerald-500" /> 500+
+              solvability-checked questions
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Layers className="h-4 w-4 text-blue-500" /> Full 9MA0 spec —
+              Pure, Statistics &amp; Mechanics
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Award className="h-4 w-4 text-amber-500" /> Examiner-style mark
+              schemes on every question
+            </span>
+          </div>
         </div>
 
         <div className="mt-12 grid gap-4 md:grid-cols-3">
