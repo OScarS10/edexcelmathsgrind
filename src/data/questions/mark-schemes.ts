@@ -16,7 +16,7 @@ export const HAND_SCHEMES: Record<string, MarkComponent[]> = {
   // ---- Algebra and functions ----
   "eb-001": [
     M("Attempt to factorise a quadratic into two linear factors, e.g. (x ± a)(x ± b)"),
-    A("Correct factors: (x + 5)(x − 2)"),
+    A("Correct factors: (x − 3)(x − 4)"),
   ],
   "eb-002": [
     M("Valid rearrangement to isolate x, e.g. subtract 4 then divide by 3"),
